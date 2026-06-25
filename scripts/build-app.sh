@@ -9,6 +9,8 @@ BUILD="$ROOT/.build/manual"
 APP="$ROOT/.build/release/CodexUsageBar.app"
 MACOS="$APP/Contents/MacOS"
 BINARY="$ROOT/.build/release/CodexUsageBar"
+VERSION="${VERSION:-0.1.1}"
+BUILD_NUMBER="${BUILD_NUMBER:-2}"
 
 mkdir -p "$BUILD" "$MACOS" "$APP/Contents"
 
@@ -48,29 +50,42 @@ mkdir -p "$BUILD" "$MACOS" "$APP/Contents"
 
 cp "$BINARY" "$MACOS/CodexUsageBar"
 
-cat > "$APP/Contents/Info.plist" <<'PLIST'
+cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleDisplayName</key>
+  <string>Codex Usage Menubar</string>
   <key>CFBundleExecutable</key>
   <string>CodexUsageBar</string>
   <key>CFBundleIdentifier</key>
-  <string>local.codex-usage-bar</string>
+  <string>com.jiangjianzeng.codex-usage-menubar</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
   <key>CFBundleName</key>
   <string>CodexUsageBar</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>${VERSION}</string>
+  <key>CFBundleVersion</key>
+  <string>${BUILD_NUMBER}</string>
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
   <key>LSUIElement</key>
   <true/>
+  <key>NSPrincipalClass</key>
+  <string>NSApplication</string>
 </dict>
 </plist>
 PLIST
 
-/usr/bin/codesign --force --sign - "$APP" >/dev/null
 /usr/bin/codesign --force --sign - "$BINARY" >/dev/null
+/usr/bin/codesign --force --sign - "$MACOS/CodexUsageBar" >/dev/null
+/usr/bin/codesign --force --sign - "$APP" >/dev/null
 /usr/bin/xattr -cr "$APP" 2>/dev/null || true
 /usr/bin/xattr -c "$BINARY" 2>/dev/null || true
 

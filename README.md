@@ -6,6 +6,16 @@ It shows the current Codex 5-hour and 7-day remaining usage directly in the
 macOS menu bar, with a click-through detail panel for account, reset time, and
 today's token usage.
 
+![Codex Usage Menubar screenshot](docs/codex-usage-menubar.png)
+
+## Download
+
+Download the latest `.dmg` from GitHub Releases:
+
+https://github.com/jiangjianzeng/codex-usage-menubar/releases/latest
+
+Open the DMG, drag `Codex Usage Menubar.app` to `Applications`, then launch it.
+
 ## Why This Exists
 
 Codex exposes useful local `token_count` events in session logs, including
@@ -51,11 +61,17 @@ It only parses `token_count` events and ignores prompt/message content.
 ## Build And Run
 
 This repo includes a direct `swift-frontend` build script for a small signed
-Apple Silicon binary:
+Apple Silicon app bundle and binary:
 
 ```bash
 bash scripts/build-app.sh
-.build/release/CodexUsageBar
+open .build/release/CodexUsageBar.app
+```
+
+Build a local installer DMG:
+
+```bash
+bash scripts/package-dmg.sh
 ```
 
 If SwiftPM works on your machine, the package is also laid out for:
@@ -104,10 +120,6 @@ launchctl bootout "gui/$(id -u)/local.codex-usage-bar.dev"
 - No third-party dependencies.
 - Refreshes every 15 seconds.
 - Streams JSONL line by line instead of loading session files into memory.
-
-## Current macOS Bundle Note
-
-The build script also creates `.build/release/CodexUsageBar.app`, but on this machine LaunchServices terminates that ad-hoc local bundle immediately even though `codesign` and `spctl` accept it. The direct binary is the verified run target.
 
 ## License
 
