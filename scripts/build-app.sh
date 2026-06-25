@@ -9,8 +9,8 @@ BUILD="$ROOT/.build/manual"
 APP="$ROOT/.build/release/CodexUsageBar.app"
 MACOS="$APP/Contents/MacOS"
 BINARY="$ROOT/.build/release/CodexUsageBar"
-VERSION="${VERSION:-0.1.1}"
-BUILD_NUMBER="${BUILD_NUMBER:-2}"
+VERSION="${VERSION:-0.1.2}"
+BUILD_NUMBER="${BUILD_NUMBER:-3}"
 
 mkdir -p "$BUILD" "$MACOS" "$APP/Contents"
 

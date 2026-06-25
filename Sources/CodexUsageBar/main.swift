@@ -35,7 +35,7 @@ final class UsageApp: NSObject {
 
     private func configurePopover() {
         popover.behavior = .transient
-        popover.contentSize = NSSize(width: 292, height: 280)
+        popover.contentSize = NSSize(width: 292, height: 302)
         popover.contentViewController = viewController
     }
 
@@ -178,12 +178,14 @@ private final class UsageViewController: NSViewController {
         primaryBar.render(remaining: snapshot.primary.remainingPercent)
         secondaryBar.render(remaining: snapshot.secondary.remainingPercent)
 
-        let reset = snapshot.primary.resetsAt.map { Formatters.time.string(from: $0) } ?? "-"
+        let primaryReset = snapshot.primary.resetsAt.map { Formatters.time.string(from: $0) } ?? "-"
+        let secondaryReset = snapshot.secondary.resetsAt.map { Formatters.time.string(from: $0) } ?? "-"
         let updated = snapshot.lastUpdated.map { Formatters.time.string(from: $0) } ?? "-"
         let account = snapshot.accountLabel ?? "Unknown"
         details.stringValue = """
         Account: \(account)
-        Next reset: \(reset)
+        5h reset: \(primaryReset)
+        7d reset: \(secondaryReset)
         Today tokens: \(Formatters.number.string(from: NSNumber(value: snapshot.todayTokens)) ?? "\(snapshot.todayTokens)")
         Total in thread: \(Formatters.number.string(from: NSNumber(value: snapshot.totalTokens)) ?? "\(snapshot.totalTokens)")
         Last event: \(updated)
