@@ -38,7 +38,7 @@ a lightweight always-visible monitor, similar to a network speed indicator.
   - `7d` remaining percentage from Codex `secondary` rate-limit events
 - Click popover:
   - account label from `~/.codex/auth.json` (`email` from ID token when available, otherwise `account_id`)
-  - 5h and 7d reset times
+  - 5h reset time and 7d reset date/time
   - today token total from local `token_count` deltas
   - latest thread total tokens
   - plan type and refresh status

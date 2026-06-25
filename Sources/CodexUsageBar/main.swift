@@ -179,7 +179,7 @@ private final class UsageViewController: NSViewController {
         secondaryBar.render(remaining: snapshot.secondary.remainingPercent)
 
         let primaryReset = snapshot.primary.resetsAt.map { Formatters.time.string(from: $0) } ?? "-"
-        let secondaryReset = snapshot.secondary.resetsAt.map { Formatters.time.string(from: $0) } ?? "-"
+        let secondaryReset = snapshot.secondary.resetsAt.map { Formatters.dateTime.string(from: $0) } ?? "-"
         let updated = snapshot.lastUpdated.map { Formatters.time.string(from: $0) } ?? "-"
         let account = snapshot.accountLabel ?? "Unknown"
         details.stringValue = """
@@ -258,6 +258,12 @@ private enum Formatters {
         let formatter = DateFormatter()
         formatter.dateStyle = .none
         formatter.timeStyle = .medium
+        return formatter
+    }()
+
+    static let dateTime: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         return formatter
     }()
 
