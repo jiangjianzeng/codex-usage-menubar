@@ -27,6 +27,7 @@ a lightweight always-visible monitor, similar to a network speed indicator.
 - Native AppKit + Swift.
 - No Electron, no web view, no Node runtime.
 - No third-party dependencies.
+- SVG-sourced macOS app icon generated at build time.
 - Streams Codex JSONL logs line by line.
 - Refreshes in the background every 15 seconds.
 - Direct release binary is about 300 KB on Apple Silicon.

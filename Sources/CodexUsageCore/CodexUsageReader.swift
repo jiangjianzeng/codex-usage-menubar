@@ -6,7 +6,7 @@ public struct UsageWindow: Equatable, Sendable {
     public let resetsAt: Date?
 
     public var remainingPercent: Double {
-        max(0, 100 - usedPercent)
+        max(0, min(100, 100 - usedPercent))
     }
 }
 
@@ -43,7 +43,7 @@ public enum CodexUsageError: Error, LocalizedError {
     }
 }
 
-public final class CodexUsageReader {
+public final class CodexUsageReader: @unchecked Sendable {
     private let sessionRoots: [URL]
     private let authFile: URL?
     private let fileManager: FileManager
@@ -200,15 +200,23 @@ private struct ParsedTokenCount {
 
 private extension UsageWindow {
     init?(json: [String: Any]) {
-        guard let usedPercent = json["used_percent"] as? Double,
-              let windowMinutes = json["window_minutes"] as? Int
+        guard let windowMinutes = JSONValue.int(json["window_minutes"])
         else {
             return nil
         }
 
-        self.usedPercent = usedPercent
+        let parsedUsedPercent: Double
+        if let usedPercent = JSONValue.double(json["used_percent"]) {
+            parsedUsedPercent = usedPercent
+        } else if let remainingPercent = JSONValue.double(json["remaining_percent"]) {
+            parsedUsedPercent = 100 - remainingPercent
+        } else {
+            return nil
+        }
+
+        self.usedPercent = parsedUsedPercent
         self.windowMinutes = windowMinutes
-        if let resetSeconds = json["resets_at"] as? TimeInterval {
+        if let resetSeconds = JSONValue.double(json["resets_at"]) {
             self.resetsAt = Date(timeIntervalSince1970: resetSeconds)
         } else {
             self.resetsAt = nil
@@ -216,17 +224,62 @@ private extension UsageWindow {
     }
 }
 
-private enum DateParser {
-    private static let fractional: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
+private enum JSONValue {
+    static func double(_ value: Any?) -> Double? {
+        switch value {
+        case let value as Double:
+            value
+        case let value as Int:
+            Double(value)
+        case let value as NSNumber:
+            value.doubleValue
+        case let value as String:
+            Double(value)
+        default:
+            nil
+        }
+    }
 
-    private static let plain = ISO8601DateFormatter()
+    static func int(_ value: Any?) -> Int? {
+        switch value {
+        case let value as Int:
+            value
+        case let value as Double:
+            Int(value)
+        case let value as NSNumber:
+            value.intValue
+        case let value as String:
+            Int(value)
+        default:
+            nil
+        }
+    }
+}
+
+private enum DateParser {
+    private static let fractional = LockedISO8601DateFormatter(options: [.withInternetDateTime, .withFractionalSeconds])
+    private static let plain = LockedISO8601DateFormatter()
 
     static func parse(_ value: String) -> Date? {
         fractional.date(from: value) ?? plain.date(from: value)
+    }
+}
+
+private final class LockedISO8601DateFormatter: @unchecked Sendable {
+    private let formatter: ISO8601DateFormatter
+    private let lock = NSLock()
+
+    init(options: ISO8601DateFormatter.Options? = nil) {
+        formatter = ISO8601DateFormatter()
+        if let options {
+            formatter.formatOptions = options
+        }
+    }
+
+    func date(from value: String) -> Date? {
+        lock.lock()
+        defer { lock.unlock() }
+        return formatter.date(from: value)
     }
 }
 

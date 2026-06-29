@@ -9,8 +9,8 @@ struct CodexUsageParserTests {
         let directory = try TestFiles.makeTemporaryDirectory()
         let session = directory.appending(path: "session.jsonl")
         let today = Calendar.current.startOfDay(for: Date())
-        let olderStamp = ISO8601DateFormatter.codex.string(from: today.addingTimeInterval(60))
-        let newerStamp = ISO8601DateFormatter.codex.string(from: today.addingTimeInterval(120))
+        let olderStamp = codexTimestamp(today.addingTimeInterval(60))
+        let newerStamp = codexTimestamp(today.addingTimeInterval(120))
         let older = tokenCountLine(
             timestamp: olderStamp,
             totalTokens: 100,
@@ -49,13 +49,30 @@ struct CodexUsageParserTests {
         #expect(snapshot.planType == "pro")
     }
 
+    @Test("rate limit numbers accept integer and remaining percent forms")
+    func rateLimitNumbersAcceptIntegerAndRemainingPercent() throws {
+        let directory = try TestFiles.makeTemporaryDirectory()
+        let session = directory.appending(path: "session.jsonl")
+        let stamp = codexTimestamp(Calendar.current.startOfDay(for: Date()).addingTimeInterval(60))
+        let line = """
+        {"timestamp":"\(stamp)","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":100},"last_token_usage":{"total_tokens":20}},"rate_limits":{"primary":{"used_percent":6,"window_minutes":300,"resets_at":"1782310000"},"secondary":{"remaining_percent":55,"window_minutes":10080,"resets_at":1782880000},"plan_type":"pro"}}}
+        """
+        try line.write(to: session, atomically: true, encoding: .utf8)
+
+        let snapshot = try CodexUsageReader(sessionRoots: [directory], authFile: nil).read()
+
+        #expect(snapshot.primary.remainingPercent == 94)
+        #expect(snapshot.secondary.usedPercent == 45)
+        #expect(snapshot.secondary.remainingPercent == 55)
+    }
+
     @Test("today token total sums token_count deltas on local calendar day")
     func todayTokenTotalSumsLocalDayDeltas() throws {
         let directory = try TestFiles.makeTemporaryDirectory()
         let session = directory.appending(path: "session.jsonl")
         let today = Calendar.current.startOfDay(for: Date())
-        let todayStamp = ISO8601DateFormatter.codex.string(from: today.addingTimeInterval(60))
-        let yesterdayStamp = ISO8601DateFormatter.codex.string(from: today.addingTimeInterval(-60))
+        let todayStamp = codexTimestamp(today.addingTimeInterval(60))
+        let yesterdayStamp = codexTimestamp(today.addingTimeInterval(-60))
 
         try [
             tokenCountLine(timestamp: yesterdayStamp, totalTokens: 10, lastTokens: 10),
@@ -108,10 +125,8 @@ private func tokenCountLine(
     """
 }
 
-private extension ISO8601DateFormatter {
-    static let codex: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
+private func codexTimestamp(_ date: Date) -> String {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return formatter.string(from: date)
 }

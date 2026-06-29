@@ -8,11 +8,16 @@ SDK="$(ls -d "$DEVELOPER_DIR"/Platforms/MacOSX.platform/Developer/SDKs/MacOSX*.s
 BUILD="$ROOT/.build/manual"
 APP="$ROOT/.build/release/CodexUsageBar.app"
 MACOS="$APP/Contents/MacOS"
+RESOURCES="$APP/Contents/Resources"
 BINARY="$ROOT/.build/release/CodexUsageBar"
-VERSION="${VERSION:-0.1.3}"
-BUILD_NUMBER="${BUILD_NUMBER:-4}"
+VERSION="${VERSION:-0.1.4}"
+BUILD_NUMBER="${BUILD_NUMBER:-5}"
+ICON_SVG="$ROOT/assets/app-icon.svg"
+ICONSET="$BUILD/AppIcon.iconset"
+ICON_PNG="$BUILD/AppIcon.png"
+ICON_ICNS="$RESOURCES/AppIcon.icns"
 
-mkdir -p "$BUILD" "$MACOS" "$APP/Contents"
+mkdir -p "$BUILD" "$MACOS" "$RESOURCES" "$APP/Contents"
 
 "$TOOLCHAIN/bin/swift-frontend" \
   -c \
@@ -26,11 +31,12 @@ mkdir -p "$BUILD" "$MACOS" "$APP/Contents"
 
 "$TOOLCHAIN/bin/swift-frontend" \
   -c \
+  -parse-as-library \
   -module-name CodexUsageBar \
   -I "$BUILD" \
   -sdk "$SDK" \
   -target arm64-apple-macosx14.0 \
-  "$ROOT/Sources/CodexUsageBar/main.swift" \
+  "$ROOT/Sources/CodexUsageBar/CodexUsageBar.swift" \
   -o "$BUILD/main.o"
 
 "$TOOLCHAIN/bin/clang" \
@@ -50,6 +56,28 @@ mkdir -p "$BUILD" "$MACOS" "$APP/Contents"
 
 cp "$BINARY" "$MACOS/CodexUsageBar"
 
+if [[ -f "$ICON_SVG" ]]; then
+  rm -rf "$ICONSET"
+  mkdir -p "$ICONSET"
+
+  if command -v rsvg-convert >/dev/null 2>&1; then
+    rsvg-convert -w 1024 -h 1024 "$ICON_SVG" -o "$ICON_PNG"
+  else
+    ICON_RENDER_DIR="$BUILD/icon-render"
+    rm -rf "$ICON_RENDER_DIR"
+    mkdir -p "$ICON_RENDER_DIR"
+    /usr/bin/qlmanage -t -s 1024 -o "$ICON_RENDER_DIR" "$ICON_SVG" >/dev/null 2>&1
+    ICON_RENDERED="$(find "$ICON_RENDER_DIR" -name '*.png' -print -quit)"
+    cp "$ICON_RENDERED" "$ICON_PNG"
+  fi
+
+  for size in 16 32 128 256 512; do
+    /usr/bin/sips -z "$size" "$size" "$ICON_PNG" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
+    /usr/bin/sips -z "$((size * 2))" "$((size * 2))" "$ICON_PNG" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
+  done
+  /usr/bin/iconutil -c icns "$ICONSET" -o "$ICON_ICNS"
+fi
+
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -63,6 +91,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <string>CodexUsageBar</string>
   <key>CFBundleIdentifier</key>
   <string>com.jiangjianzeng.codex-usage-menubar</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>

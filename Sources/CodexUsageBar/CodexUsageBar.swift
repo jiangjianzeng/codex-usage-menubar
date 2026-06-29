@@ -2,6 +2,7 @@ import AppKit
 import CodexUsageCore
 import Foundation
 
+@MainActor
 final class UsageApp: NSObject {
     private let statusItem = NSStatusBar.system.statusItem(withLength: 62)
     private let statusView = StatusUsageView(frame: NSRect(x: 0, y: 0, width: 62, height: NSStatusBar.system.thickness))
@@ -9,7 +10,7 @@ final class UsageApp: NSObject {
     private let popover = NSPopover()
     private let viewController = UsageViewController()
     private var timer: Timer?
-    private var latestSnapshot = CodexUsageSnapshot.empty
+    private var latestSnapshot: CodexUsageSnapshot?
     private var latestError: Error?
     private var isRefreshing = false
 
@@ -17,11 +18,13 @@ final class UsageApp: NSObject {
         super.init()
         configureStatusButton()
         configurePopover()
-        render(snapshot: latestSnapshot, error: nil)
+        renderLoading()
         refreshAsync()
 
         timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
-            self?.refreshAsync()
+            Task { @MainActor [weak self] in
+                self?.refreshAsync()
+            }
         }
         RunLoop.main.add(timer!, forMode: .common)
     }
@@ -55,10 +58,19 @@ final class UsageApp: NSObject {
                     self.render(snapshot: snapshot, error: nil)
                 case .failure(let error):
                     self.latestError = error
-                    self.render(snapshot: self.latestSnapshot, error: error)
+                    if let snapshot = self.latestSnapshot {
+                        self.render(snapshot: snapshot, error: error)
+                    } else {
+                        self.renderLoading(error: error)
+                    }
                 }
             }
         }
+    }
+
+    private func renderLoading(error: Error? = nil) {
+        statusView.render(snapshot: nil, hasError: error != nil)
+        viewController.render(snapshot: nil, error: error, nextRefresh: Date().addingTimeInterval(15))
     }
 
     private func render(snapshot: CodexUsageSnapshot, error: Error?) {
@@ -84,10 +96,16 @@ private final class StatusUsageView: NSControl {
 
     override var isFlipped: Bool { true }
 
-    func render(snapshot: CodexUsageSnapshot, hasError: Bool) {
-        primaryText = "5h \(Int(snapshot.primary.remainingPercent.rounded()))%"
-        secondaryText = "7d \(Int(snapshot.secondary.remainingPercent.rounded()))%"
-        textColor = hasError ? .systemOrange : Self.colorForRemaining(snapshot.primary.remainingPercent)
+    func render(snapshot: CodexUsageSnapshot?, hasError: Bool) {
+        if let snapshot {
+            primaryText = "5h \(Formatters.percent(snapshot.primary.remainingPercent))%"
+            secondaryText = "7d \(Formatters.percent(snapshot.secondary.remainingPercent))%"
+            textColor = hasError ? .systemOrange : Self.colorForRemaining(snapshot.primary.remainingPercent)
+        } else {
+            primaryText = "5h --%"
+            secondaryText = "7d --%"
+            textColor = hasError ? .systemOrange : .secondaryLabelColor
+        }
         needsDisplay = true
     }
 
@@ -139,7 +157,7 @@ private final class UsageViewController: NSViewController {
     private let quitButton = NSButton(title: "Quit", target: nil, action: #selector(NSApplication.terminate(_:)))
 
     override func loadView() {
-        view = NSView(frame: NSRect(x: 0, y: 0, width: 292, height: 280))
+        view = NSView(frame: NSRect(x: 0, y: 0, width: 292, height: 302))
         view.wantsLayer = true
         view.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
 
@@ -174,22 +192,24 @@ private final class UsageViewController: NSViewController {
         ])
     }
 
-    func render(snapshot: CodexUsageSnapshot, error: Error?, nextRefresh: Date) {
-        primaryBar.render(remaining: snapshot.primary.remainingPercent)
-        secondaryBar.render(remaining: snapshot.secondary.remainingPercent)
+    func render(snapshot: CodexUsageSnapshot?, error: Error?, nextRefresh: Date) {
+        primaryBar.render(remaining: snapshot?.primary.remainingPercent)
+        secondaryBar.render(remaining: snapshot?.secondary.remainingPercent)
 
-        let primaryReset = snapshot.primary.resetsAt.map { Formatters.time.string(from: $0) } ?? "-"
-        let secondaryReset = snapshot.secondary.resetsAt.map { Formatters.dateTime.string(from: $0) } ?? "-"
-        let updated = snapshot.lastUpdated.map { Formatters.time.string(from: $0) } ?? "-"
-        let account = snapshot.accountLabel ?? "Unknown"
+        let primaryReset = snapshot?.primary.resetsAt.map { Formatters.dateTime.string(from: $0) } ?? "-"
+        let secondaryReset = snapshot?.secondary.resetsAt.map { Formatters.dateTime.string(from: $0) } ?? "-"
+        let updated = snapshot?.lastUpdated.map { Formatters.time.string(from: $0) } ?? "-"
+        let account = snapshot?.accountLabel ?? "Unknown"
+        let todayTokens = snapshot.map { Formatters.number.string(from: NSNumber(value: $0.todayTokens)) ?? "\($0.todayTokens)" } ?? "-"
+        let totalTokens = snapshot.map { Formatters.number.string(from: NSNumber(value: $0.totalTokens)) ?? "\($0.totalTokens)" } ?? "-"
         details.stringValue = """
         Account: \(account)
         5h reset: \(primaryReset)
         7d reset: \(secondaryReset)
-        Today tokens: \(Formatters.number.string(from: NSNumber(value: snapshot.todayTokens)) ?? "\(snapshot.todayTokens)")
-        Total in thread: \(Formatters.number.string(from: NSNumber(value: snapshot.totalTokens)) ?? "\(snapshot.totalTokens)")
+        Today tokens: \(todayTokens)
+        Total in thread: \(totalTokens)
         Last event: \(updated)
-        Plan: \(snapshot.planType ?? "-")
+        Plan: \(snapshot?.planType ?? "-")
         """
 
         if let error {
@@ -241,9 +261,15 @@ private final class UsageBar: NSView {
         nil
     }
 
-    func render(remaining: Double) {
-        let rounded = Int(remaining.rounded())
-        valueField.stringValue = "\(rounded)%"
+    func render(remaining: Double?) {
+        guard let remaining else {
+            valueField.stringValue = "--%"
+            bar.doubleValue = 0
+            valueField.textColor = .secondaryLabelColor
+            return
+        }
+
+        valueField.stringValue = "\(Formatters.percent(remaining))%"
         bar.doubleValue = max(0, min(100, remaining))
         valueField.textColor = switch remaining {
         case ..<10: .systemRed
@@ -272,9 +298,25 @@ private enum Formatters {
         formatter.numberStyle = .decimal
         return formatter
     }()
+
+    static func percent(_ value: Double) -> Int {
+        let clamped = max(0, min(100, value))
+        if clamped >= 100 {
+            return 100
+        }
+        return Int(clamped.rounded(.down))
+    }
 }
 
-let app = NSApplication.shared
-app.setActivationPolicy(.accessory)
-let controller = UsageApp()
-app.run()
+@main
+struct CodexUsageBarMain {
+    @MainActor
+    static func main() {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        let controller = UsageApp()
+        withExtendedLifetime(controller) {
+            app.run()
+        }
+    }
+}

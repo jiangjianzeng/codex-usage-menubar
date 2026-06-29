@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="152" x2="872" y1="112" y2="912" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1f2937"/>
+      <stop offset="1" stop-color="#05070a"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="228" x2="796" y1="0" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0a84ff"/>
+      <stop offset="1" stop-color="#64d2ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#bg)"/>
+  <path d="M512 204c-169.7 0-308 138.3-308 308s138.3 308 308 308c84 0 160.2-33.7 215.8-88.3l-78.3-78.3C613.8 688.2 565.4 710 512 710c-109.4 0-198-88.6-198-198s88.6-198 198-198c53.4 0 101.8 21.8 137.5 56.6l78.3-78.3C672.2 237.7 596 204 512 204z" fill="#f7f8fa"/>
+  <path d="M512 348c-90.5 0-164 73.5-164 164s73.5 164 164 164c42.8 0 81.8-16.4 111-43.3l-77.1-77.1c-9.6 6.6-21.3 10.4-33.9 10.4-29.8 0-54-24.2-54-54s24.2-54 54-54c12.6 0 24.3 3.8 33.9 10.4l77.1-77.1C593.8 364.4 554.8 348 512 348z" fill="#111827"/>
+  <rect x="228" y="774" width="568" height="54" rx="27" fill="url(#bar)"/>
+  <rect x="228" y="686" width="408" height="42" rx="21" fill="url(#bar)" opacity=".78"/>
+</svg>

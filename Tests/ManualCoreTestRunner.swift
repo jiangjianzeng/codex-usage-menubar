@@ -4,6 +4,7 @@ import Foundation
 struct ManualCoreTestRunner {
     static func main() throws {
         try latestTokenCountEventDrivesSnapshot()
+        try rateLimitNumbersAcceptIntegerAndRemainingPercent()
         try todayTokenTotalSumsLocalDayDeltas()
         try accountIDIsReadFromAuthFile()
         print("Manual core tests passed")
@@ -27,6 +28,21 @@ struct ManualCoreTestRunner {
         try expect(snapshot.secondary.remainingPercent == 52, "secondary remaining percent")
         try expect(snapshot.todayTokens == 125, "fixture day token total")
         try expect(snapshot.totalTokens == 420, "total tokens")
+    }
+
+    private static func rateLimitNumbersAcceptIntegerAndRemainingPercent() throws {
+        let directory = try makeTemporaryDirectory()
+        let session = directory.appending(path: "session.jsonl")
+        let stamp = iso.string(from: Calendar.current.startOfDay(for: Date()).addingTimeInterval(60))
+        let line = """
+        {"timestamp":"\(stamp)","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":100},"last_token_usage":{"total_tokens":20}},"rate_limits":{"primary":{"used_percent":6,"window_minutes":300,"resets_at":"1782310000"},"secondary":{"remaining_percent":55,"window_minutes":10080,"resets_at":1782880000},"plan_type":"pro"}}}
+        """
+        try line.write(to: session, atomically: true, encoding: .utf8)
+
+        let snapshot = try CodexUsageReader(sessionRoots: [directory], authFile: nil).read()
+        try expect(snapshot.primary.remainingPercent == 94, "integer used percent")
+        try expect(snapshot.secondary.usedPercent == 45, "remaining percent fallback")
+        try expect(snapshot.secondary.remainingPercent == 55, "remaining percent value")
     }
 
     private static func todayTokenTotalSumsLocalDayDeltas() throws {
