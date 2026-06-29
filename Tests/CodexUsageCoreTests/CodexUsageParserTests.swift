@@ -4,7 +4,7 @@ import Testing
 
 @Suite("Codex usage parsing")
 struct CodexUsageParserTests {
-    @Test("latest token_count event drives five hour and weekly usage")
+    @Test("latest token_count event drives local token usage only")
     func latestTokenCountEventDrivesSnapshot() throws {
         let directory = try TestFiles.makeTemporaryDirectory()
         let session = directory.appending(path: "session.jsonl")
@@ -39,18 +39,16 @@ struct CodexUsageParserTests {
 
         let snapshot = try CodexUsageReader(sessionRoots: [directory], authFile: nil).read()
 
-        #expect(snapshot.primary.usedPercent == 36)
-        #expect(snapshot.primary.remainingPercent == 64)
-        #expect(snapshot.primary.windowMinutes == 300)
-        #expect(snapshot.secondary.usedPercent == 48)
-        #expect(snapshot.secondary.remainingPercent == 52)
+        #expect(snapshot.rateLimitsAvailable == false)
+        #expect(snapshot.primary == CodexUsageSnapshot.empty.primary)
+        #expect(snapshot.secondary == CodexUsageSnapshot.empty.secondary)
         #expect(snapshot.todayTokens == 125)
         #expect(snapshot.totalTokens == 420)
         #expect(snapshot.planType == "pro")
     }
 
-    @Test("rate limit numbers accept integer and remaining percent forms")
-    func rateLimitNumbersAcceptIntegerAndRemainingPercent() throws {
+    @Test("local rate limit numbers are ignored for displayed usage")
+    func localRateLimitNumbersAreIgnoredForDisplayedUsage() throws {
         let directory = try TestFiles.makeTemporaryDirectory()
         let session = directory.appending(path: "session.jsonl")
         let stamp = codexTimestamp(Calendar.current.startOfDay(for: Date()).addingTimeInterval(60))
@@ -61,9 +59,10 @@ struct CodexUsageParserTests {
 
         let snapshot = try CodexUsageReader(sessionRoots: [directory], authFile: nil).read()
 
-        #expect(snapshot.primary.remainingPercent == 94)
-        #expect(snapshot.secondary.usedPercent == 45)
-        #expect(snapshot.secondary.remainingPercent == 55)
+        #expect(snapshot.rateLimitsAvailable == false)
+        #expect(snapshot.primary == CodexUsageSnapshot.empty.primary)
+        #expect(snapshot.secondary == CodexUsageSnapshot.empty.secondary)
+        #expect(snapshot.todayTokens == 20)
     }
 
     @Test("today token total sums token_count deltas on local calendar day")

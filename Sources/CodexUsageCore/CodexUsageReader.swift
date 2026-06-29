@@ -13,6 +13,7 @@ public struct UsageWindow: Equatable, Sendable {
 public struct CodexUsageSnapshot: Equatable, Sendable {
     public let primary: UsageWindow
     public let secondary: UsageWindow
+    public let rateLimitsAvailable: Bool
     public let todayTokens: Int
     public let totalTokens: Int
     public let planType: String?
@@ -23,6 +24,7 @@ public struct CodexUsageSnapshot: Equatable, Sendable {
     public static let empty = CodexUsageSnapshot(
         primary: UsageWindow(usedPercent: 0, windowMinutes: 300, resetsAt: nil),
         secondary: UsageWindow(usedPercent: 0, windowMinutes: 10_080, resetsAt: nil),
+        rateLimitsAvailable: false,
         todayTokens: 0,
         totalTokens: 0,
         planType: nil,
@@ -46,58 +48,42 @@ public enum CodexUsageError: Error, LocalizedError {
 public final class CodexUsageReader: @unchecked Sendable {
     private let sessionRoots: [URL]
     private let authFile: URL?
+    private let remoteUsageEnabled: Bool
     private let fileManager: FileManager
     private let calendar: Calendar
 
     public init(
         sessionRoots: [URL] = CodexUsageReader.defaultSessionRoots(),
         authFile: URL? = CodexUsageReader.defaultAuthFile(),
+        remoteUsage: Bool? = nil,
         fileManager: FileManager = .default,
         calendar: Calendar = .current
     ) {
         self.sessionRoots = sessionRoots
         self.authFile = authFile
+        self.remoteUsageEnabled = remoteUsage ?? (authFile == CodexUsageReader.defaultAuthFile())
         self.fileManager = fileManager
         self.calendar = calendar
     }
 
     public func read() throws -> CodexUsageSnapshot {
-        var latest: ParsedTokenCount?
-        var todayTokens = 0
-        let today = calendar.startOfDay(for: Date())
-        let oldestUsefulModificationDate = calendar.date(byAdding: .day, value: -8, to: today) ?? today
+        let local = readLocalUsage()
+        let remote = readRemoteUsage()
 
-        for file in sessionFiles(modifiedAfter: oldestUsefulModificationDate) {
-            guard let stream = InputStream(url: file) else { continue }
-            stream.open()
-            defer { stream.close() }
-
-            for line in LineReader(stream: stream) where line.contains(#""token_count""#) {
-                guard let event = ParsedTokenCount(line: line, sourceFile: file.path(percentEncoded: false)) else {
-                    continue
-                }
-                if calendar.startOfDay(for: event.timestamp) == today {
-                    todayTokens += event.lastTokens
-                }
-                if latest == nil || event.timestamp > latest!.timestamp {
-                    latest = event
-                }
-            }
-        }
-
-        guard let latest else {
+        guard local != nil || remote != nil else {
             throw CodexUsageError.noReadableSessionData
         }
 
         return CodexUsageSnapshot(
-            primary: latest.primary,
-            secondary: latest.secondary,
-            todayTokens: todayTokens,
-            totalTokens: latest.totalTokens,
-            planType: latest.planType,
+            primary: remote?.primary ?? CodexUsageSnapshot.empty.primary,
+            secondary: remote?.secondary ?? CodexUsageSnapshot.empty.secondary,
+            rateLimitsAvailable: remote != nil,
+            todayTokens: local?.todayTokens ?? 0,
+            totalTokens: local?.latest.totalTokens ?? 0,
+            planType: remote?.planType ?? local?.latest.planType,
             accountLabel: readAccountLabel(),
-            lastUpdated: latest.timestamp,
-            sourceFile: latest.sourceFile
+            lastUpdated: local?.latest.timestamp ?? remote?.fetchedAt,
+            sourceFile: local?.latest.sourceFile
         )
     }
 
@@ -135,6 +121,44 @@ public final class CodexUsageReader: @unchecked Sendable {
         }
     }
 
+    private func readLocalUsage() -> LocalUsage? {
+        var latest: ParsedTokenCount?
+        var todayTokens = 0
+        let today = calendar.startOfDay(for: Date())
+        let oldestUsefulModificationDate = calendar.date(byAdding: .day, value: -8, to: today) ?? today
+
+        for file in sessionFiles(modifiedAfter: oldestUsefulModificationDate) {
+            guard let stream = InputStream(url: file) else { continue }
+            stream.open()
+            defer { stream.close() }
+
+            for line in LineReader(stream: stream) where line.contains(#""token_count""#) {
+                guard let event = ParsedTokenCount(line: line, sourceFile: file.path(percentEncoded: false)) else {
+                    continue
+                }
+                if calendar.startOfDay(for: event.timestamp) == today {
+                    todayTokens += event.lastTokens
+                }
+                if latest == nil || event.timestamp > latest!.timestamp {
+                    latest = event
+                }
+            }
+        }
+
+        guard let latest else { return nil }
+        return LocalUsage(latest: latest, todayTokens: todayTokens)
+    }
+
+    private func readRemoteUsage() -> RemoteUsage? {
+        guard remoteUsageEnabled,
+              let credentials = CodexOAuthCredentials.load(authFile: authFile)
+        else {
+            return nil
+        }
+
+        return try? CodexWhamUsageClient(credentials: credentials).fetch()
+    }
+
     private func readAccountLabel() -> String? {
         guard let authFile,
               let data = try? Data(contentsOf: authFile),
@@ -156,6 +180,18 @@ public final class CodexUsageReader: @unchecked Sendable {
 
         return object["auth_mode"] as? String
     }
+}
+
+private struct LocalUsage {
+    let latest: ParsedTokenCount
+    let todayTokens: Int
+}
+
+private struct RemoteUsage {
+    let primary: UsageWindow
+    let secondary: UsageWindow
+    let planType: String?
+    let fetchedAt: Date
 }
 
 private struct ParsedTokenCount {
@@ -198,6 +234,155 @@ private struct ParsedTokenCount {
     }
 }
 
+private struct CodexOAuthCredentials {
+    let accessToken: String
+    let accountID: String?
+
+    static func load(authFile: URL?) -> CodexOAuthCredentials? {
+        if let keychainJSON = readKeychainJSON(),
+           let credentials = parse(jsonData: Data(keychainJSON.utf8)) {
+            return credentials
+        }
+
+        guard let authFile,
+              let data = try? Data(contentsOf: authFile)
+        else {
+            return nil
+        }
+
+        return parse(jsonData: data)
+    }
+
+    private static func parse(jsonData: Data) -> CodexOAuthCredentials? {
+        guard let object = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+              object["auth_mode"] as? String == "chatgpt",
+              let tokens = object["tokens"] as? [String: Any],
+              let accessToken = tokens["access_token"] as? String,
+              !accessToken.isEmpty
+        else {
+            return nil
+        }
+
+        let accountID = (tokens["account_id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        return CodexOAuthCredentials(accessToken: accessToken, accountID: accountID)
+    }
+
+    private static func readKeychainJSON() -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = ["find-generic-password", "-s", "Codex Auth", "-w"]
+
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return nil }
+
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        let value = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value?.isEmpty == false ? value : nil
+    }
+}
+
+private final class CodexWhamUsageClient {
+    private let credentials: CodexOAuthCredentials
+
+    init(credentials: CodexOAuthCredentials) {
+        self.credentials = credentials
+    }
+
+    func fetch() throws -> RemoteUsage {
+        var request = URLRequest(url: URL(string: "https://chatgpt.com/backend-api/wham/usage")!)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 15
+        request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("codex-cli", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let accountID = credentials.accountID {
+            request.setValue(accountID, forHTTPHeaderField: "ChatGPT-Account-Id")
+        }
+
+        let data = try fetchData(request: request)
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let rateLimit = object["rate_limit"] as? [String: Any],
+              let primaryObject = rateLimit["primary_window"] as? [String: Any],
+              let secondaryObject = rateLimit["secondary_window"] as? [String: Any],
+              let primary = UsageWindow(whamWindow: primaryObject),
+              let secondary = UsageWindow(whamWindow: secondaryObject)
+        else {
+            throw RemoteUsageError.invalidResponse
+        }
+
+        return RemoteUsage(
+            primary: primary,
+            secondary: secondary,
+            planType: object["plan_type"] as? String,
+            fetchedAt: Date()
+        )
+    }
+
+    private func fetchData(request: URLRequest) throws -> Data {
+        let semaphore = DispatchSemaphore(value: 0)
+        let resultBox = URLSessionResultBox()
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error {
+                resultBox.set(.failure(error))
+            } else if let data, let response {
+                resultBox.set(.success((data, response)))
+            } else {
+                resultBox.set(.failure(RemoteUsageError.invalidResponse))
+            }
+            semaphore.signal()
+        }.resume()
+
+        guard semaphore.wait(timeout: .now() + 16) == .success else {
+            throw RemoteUsageError.timeout
+        }
+
+        let (data, response) = try resultBox.get()?.get() ?? {
+            throw RemoteUsageError.invalidResponse
+        }()
+
+        guard let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode)
+        else {
+            throw RemoteUsageError.invalidResponse
+        }
+
+        return data
+    }
+}
+
+private enum RemoteUsageError: Error {
+    case invalidResponse
+    case timeout
+}
+
+private final class URLSessionResultBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var result: Result<(Data, URLResponse), Error>?
+
+    func set(_ result: Result<(Data, URLResponse), Error>) {
+        lock.lock()
+        self.result = result
+        lock.unlock()
+    }
+
+    func get() -> Result<(Data, URLResponse), Error>? {
+        lock.lock()
+        defer { lock.unlock() }
+        return result
+    }
+}
+
 private extension UsageWindow {
     init?(json: [String: Any]) {
         guard let windowMinutes = JSONValue.int(json["window_minutes"])
@@ -217,6 +402,22 @@ private extension UsageWindow {
         self.usedPercent = parsedUsedPercent
         self.windowMinutes = windowMinutes
         if let resetSeconds = JSONValue.double(json["resets_at"]) {
+            self.resetsAt = Date(timeIntervalSince1970: resetSeconds)
+        } else {
+            self.resetsAt = nil
+        }
+    }
+
+    init?(whamWindow json: [String: Any]) {
+        guard let usedPercent = JSONValue.double(json["used_percent"]),
+              let windowSeconds = JSONValue.int(json["limit_window_seconds"])
+        else {
+            return nil
+        }
+
+        self.usedPercent = usedPercent
+        self.windowMinutes = max(1, windowSeconds / 60)
+        if let resetSeconds = JSONValue.double(json["reset_at"]) {
             self.resetsAt = Date(timeIntervalSince1970: resetSeconds)
         } else {
             self.resetsAt = nil

@@ -3,8 +3,8 @@
 A tiny native macOS menu bar monitor for Codex usage limits and token activity.
 
 It shows the current Codex 5-hour and 7-day remaining usage directly in the
-macOS menu bar, with a click-through detail panel for account, reset time, and
-today's token usage.
+macOS menu bar, with a click-through detail panel for account, reset times, and
+today's local token activity.
 
 ![Codex Usage Menubar screenshot](docs/codex-usage-menubar.png)
 
@@ -18,9 +18,9 @@ Open the DMG, drag `Codex Usage Menubar.app` to `Applications`, then launch it.
 
 ## Why This Exists
 
-Codex exposes useful local `token_count` events in session logs, including
-5-hour and 7-day rate-limit windows. Codex Usage Menubar turns those events into
-a lightweight always-visible monitor, similar to a network speed indicator.
+Codex Usage Menubar gives the OAuth account usage window a lightweight
+always-visible monitor, similar to a network speed indicator. Local session logs
+are used only for token activity details.
 
 ## Performance First
 
@@ -29,14 +29,14 @@ a lightweight always-visible monitor, similar to a network speed indicator.
 - No third-party dependencies.
 - SVG-sourced macOS app icon generated at build time.
 - Streams Codex JSONL logs line by line.
-- Refreshes in the background every 15 seconds.
+- Refreshes in the background every 120 seconds.
 - Direct release binary is about 300 KB on Apple Silicon.
 
 ## What It Shows
 
 - Status bar, two compact lines:
-  - `5h` remaining percentage from Codex `primary` rate-limit events
-  - `7d` remaining percentage from Codex `secondary` rate-limit events
+  - `5h` remaining percentage from Codex OAuth usage status
+  - `7d` remaining percentage from Codex OAuth usage status
 - Click popover:
   - account label from `~/.codex/auth.json` (`email` from ID token when available, otherwise `account_id`)
   - 5h reset time and 7d reset date/time
@@ -46,18 +46,17 @@ a lightweight always-visible monitor, similar to a network speed indicator.
 
 ## Data Source
 
-OpenAI's Codex manual documents three enterprise monitoring surfaces:
-Analytics Dashboard, Analytics API, and Compliance API. The Analytics API
-supports daily or weekly UTC buckets for workspace usage, and usage data can lag
-by up to 12 hours, so it is not suitable as the default source for a live menu
-bar monitor.
+The 5-hour and 7-day usage windows come from the Codex OAuth account backend
+used by the Codex client. If that request is unavailable, the menu bar displays
+`--%` instead of falling back to stale local rate-limit fields.
 
-For real-time local updates, this app reads Codex session JSONL files under:
+For token activity details, this app reads Codex session JSONL files under:
 
 - `~/.codex/sessions`
 - `~/.codex/archived_sessions`
 
-It only parses `token_count` events and ignores prompt/message content.
+It only parses `token_count` events and ignores prompt/message content. Local
+JSONL data is not used for the 5-hour or 7-day remaining percentages.
 
 ## Build And Run
 
@@ -119,7 +118,7 @@ launchctl bootout "gui/$(id -u)/local.codex-usage-bar.dev"
 
 - AppKit-only, no Electron/Tauri/web runtime.
 - No third-party dependencies.
-- Refreshes every 15 seconds.
+- Refreshes every 120 seconds.
 - Streams JSONL line by line instead of loading session files into memory.
 
 ## License

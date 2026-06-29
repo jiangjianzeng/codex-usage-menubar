@@ -3,14 +3,14 @@ import Foundation
 @main
 struct ManualCoreTestRunner {
     static func main() throws {
-        try latestTokenCountEventDrivesSnapshot()
-        try rateLimitNumbersAcceptIntegerAndRemainingPercent()
+        try latestTokenCountEventDrivesLocalTokenUsageOnly()
+        try localRateLimitNumbersAreIgnoredForDisplayedUsage()
         try todayTokenTotalSumsLocalDayDeltas()
         try accountIDIsReadFromAuthFile()
         print("Manual core tests passed")
     }
 
-    private static func latestTokenCountEventDrivesSnapshot() throws {
+    private static func latestTokenCountEventDrivesLocalTokenUsageOnly() throws {
         let directory = try makeTemporaryDirectory()
         let session = directory.appending(path: "session.jsonl")
         let today = Calendar.current.startOfDay(for: Date())
@@ -22,15 +22,14 @@ struct ManualCoreTestRunner {
         ].joined(separator: "\n").write(to: session, atomically: true, encoding: .utf8)
 
         let snapshot = try CodexUsageReader(sessionRoots: [directory], authFile: nil).read()
-        try expect(snapshot.primary.usedPercent == 36, "primary used percent")
-        try expect(snapshot.primary.remainingPercent == 64, "primary remaining percent")
-        try expect(snapshot.secondary.usedPercent == 48, "secondary used percent")
-        try expect(snapshot.secondary.remainingPercent == 52, "secondary remaining percent")
+        try expect(snapshot.rateLimitsAvailable == false, "local rate limits ignored")
+        try expect(snapshot.primary == CodexUsageSnapshot.empty.primary, "primary is empty without remote usage")
+        try expect(snapshot.secondary == CodexUsageSnapshot.empty.secondary, "secondary is empty without remote usage")
         try expect(snapshot.todayTokens == 125, "fixture day token total")
         try expect(snapshot.totalTokens == 420, "total tokens")
     }
 
-    private static func rateLimitNumbersAcceptIntegerAndRemainingPercent() throws {
+    private static func localRateLimitNumbersAreIgnoredForDisplayedUsage() throws {
         let directory = try makeTemporaryDirectory()
         let session = directory.appending(path: "session.jsonl")
         let stamp = iso.string(from: Calendar.current.startOfDay(for: Date()).addingTimeInterval(60))
@@ -40,9 +39,10 @@ struct ManualCoreTestRunner {
         try line.write(to: session, atomically: true, encoding: .utf8)
 
         let snapshot = try CodexUsageReader(sessionRoots: [directory], authFile: nil).read()
-        try expect(snapshot.primary.remainingPercent == 94, "integer used percent")
-        try expect(snapshot.secondary.usedPercent == 45, "remaining percent fallback")
-        try expect(snapshot.secondary.remainingPercent == 55, "remaining percent value")
+        try expect(snapshot.rateLimitsAvailable == false, "local rate limits ignored")
+        try expect(snapshot.primary == CodexUsageSnapshot.empty.primary, "primary is empty without remote usage")
+        try expect(snapshot.secondary == CodexUsageSnapshot.empty.secondary, "secondary is empty without remote usage")
+        try expect(snapshot.todayTokens == 20, "today token sum")
     }
 
     private static func todayTokenTotalSumsLocalDayDeltas() throws {

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-VERSION="${VERSION:-0.1.4}"
+VERSION="${VERSION:-0.1.5}"
 ARCH="${ARCH:-macos-arm64}"
 APP="$ROOT/.build/release/CodexUsageBar.app"
 DIST="$ROOT/.build/dist"
