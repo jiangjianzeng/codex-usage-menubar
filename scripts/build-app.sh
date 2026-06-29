@@ -10,8 +10,8 @@ APP="$ROOT/.build/release/CodexUsageBar.app"
 MACOS="$APP/Contents/MacOS"
 RESOURCES="$APP/Contents/Resources"
 BINARY="$ROOT/.build/release/CodexUsageBar"
-VERSION="${VERSION:-0.1.7}"
-BUILD_NUMBER="${BUILD_NUMBER:-8}"
+VERSION="${VERSION:-0.1.8}"
+BUILD_NUMBER="${BUILD_NUMBER:-9}"
 ICON_SOURCE_PNG="$ROOT/assets/app-icon.png"
 ICON_SVG="$ROOT/assets/app-icon.svg"
 STATUS_ICON_SVG="$ROOT/assets/status-bar-icon.svg"
@@ -24,6 +24,8 @@ mkdir -p "$BUILD" "$MACOS" "$RESOURCES" "$APP/Contents"
 
 "$TOOLCHAIN/bin/swift-frontend" \
   -c \
+  -Osize \
+  -gnone \
   -parse-as-library \
   -module-name CodexUsageCore \
   -emit-module-path "$BUILD/CodexUsageCore.swiftmodule" \
@@ -34,6 +36,8 @@ mkdir -p "$BUILD" "$MACOS" "$RESOURCES" "$APP/Contents"
 
 "$TOOLCHAIN/bin/swift-frontend" \
   -c \
+  -Osize \
+  -gnone \
   -parse-as-library \
   -module-name CodexUsageBar \
   -I "$BUILD" \
@@ -55,8 +59,10 @@ mkdir -p "$BUILD" "$MACOS" "$RESOURCES" "$APP/Contents"
   -lswiftFoundation \
   -lswiftDispatch \
   -lswiftCoreFoundation \
+  -Wl,-dead_strip \
   -o "$BINARY"
 
+strip -S -x "$BINARY"
 cp "$BINARY" "$MACOS/CodexUsageBar"
 
 if [[ -f "$ICON_SOURCE_PNG" || -f "$ICON_SVG" ]]; then
