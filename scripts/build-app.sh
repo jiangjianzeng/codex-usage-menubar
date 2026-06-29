@@ -10,9 +10,12 @@ APP="$ROOT/.build/release/CodexUsageBar.app"
 MACOS="$APP/Contents/MacOS"
 RESOURCES="$APP/Contents/Resources"
 BINARY="$ROOT/.build/release/CodexUsageBar"
-VERSION="${VERSION:-0.1.5}"
-BUILD_NUMBER="${BUILD_NUMBER:-6}"
+VERSION="${VERSION:-0.1.7}"
+BUILD_NUMBER="${BUILD_NUMBER:-8}"
+ICON_SOURCE_PNG="$ROOT/assets/app-icon.png"
 ICON_SVG="$ROOT/assets/app-icon.svg"
+STATUS_ICON_SVG="$ROOT/assets/status-bar-icon.svg"
+STATUS_ICON_PNG="$RESOURCES/status-bar-icon.png"
 ICONSET="$BUILD/AppIcon.iconset"
 ICON_PNG="$BUILD/AppIcon.png"
 ICON_ICNS="$RESOURCES/AppIcon.icns"
@@ -56,11 +59,13 @@ mkdir -p "$BUILD" "$MACOS" "$RESOURCES" "$APP/Contents"
 
 cp "$BINARY" "$MACOS/CodexUsageBar"
 
-if [[ -f "$ICON_SVG" ]]; then
+if [[ -f "$ICON_SOURCE_PNG" || -f "$ICON_SVG" ]]; then
   rm -rf "$ICONSET"
   mkdir -p "$ICONSET"
 
-  if command -v rsvg-convert >/dev/null 2>&1; then
+  if [[ -f "$ICON_SOURCE_PNG" ]]; then
+    cp "$ICON_SOURCE_PNG" "$ICON_PNG"
+  elif command -v rsvg-convert >/dev/null 2>&1; then
     rsvg-convert -w 1024 -h 1024 "$ICON_SVG" -o "$ICON_PNG"
   else
     ICON_RENDER_DIR="$BUILD/icon-render"
@@ -76,6 +81,19 @@ if [[ -f "$ICON_SVG" ]]; then
     /usr/bin/sips -z "$((size * 2))" "$((size * 2))" "$ICON_PNG" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
   done
   /usr/bin/iconutil -c icns "$ICONSET" -o "$ICON_ICNS"
+fi
+
+if [[ -f "$STATUS_ICON_SVG" ]]; then
+  if command -v rsvg-convert >/dev/null 2>&1; then
+    rsvg-convert -w 64 -h 64 "$STATUS_ICON_SVG" -o "$STATUS_ICON_PNG"
+  else
+    STATUS_ICON_RENDER_DIR="$BUILD/status-icon-render"
+    rm -rf "$STATUS_ICON_RENDER_DIR"
+    mkdir -p "$STATUS_ICON_RENDER_DIR"
+    /usr/bin/qlmanage -t -s 64 -o "$STATUS_ICON_RENDER_DIR" "$STATUS_ICON_SVG" >/dev/null 2>&1
+    STATUS_ICON_RENDERED="$(find "$STATUS_ICON_RENDER_DIR" -name '*.png' -print -quit)"
+    cp "$STATUS_ICON_RENDERED" "$STATUS_ICON_PNG"
+  fi
 fi
 
 cat > "$APP/Contents/Info.plist" <<PLIST

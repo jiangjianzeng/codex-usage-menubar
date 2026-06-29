@@ -27,7 +27,7 @@ are used only for token activity details.
 - Native AppKit + Swift.
 - No Electron, no web view, no Node runtime.
 - No third-party dependencies.
-- SVG-sourced macOS app icon generated at build time.
+- PNG-sourced macOS app icon generated at build time.
 - Streams Codex JSONL logs line by line.
 - Refreshes in the background every 120 seconds.
 - Direct release binary is about 300 KB on Apple Silicon.

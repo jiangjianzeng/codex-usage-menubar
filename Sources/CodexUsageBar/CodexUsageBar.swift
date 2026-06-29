@@ -119,11 +119,11 @@ private final class StatusUsageView: NSControl {
     private static let iconX: CGFloat = 1
     private static let iconSize: CGFloat = 17
     private static let textGap: CGFloat = 4
+    private static let statusIcon = NSImage(named: "status-bar-icon")
 
     private var primaryText = "5h --%"
     private var secondaryText = "7d --%"
-    private var textColor = NSColor.labelColor
-    private var iconColor = NSColor.white.withAlphaComponent(0.92)
+    private var tone = StatusTone.normal
 
     override var isFlipped: Bool { true }
 
@@ -136,14 +136,17 @@ private final class StatusUsageView: NSControl {
         if let snapshot, snapshot.rateLimitsAvailable {
             primaryText = "5h \(Formatters.percent(snapshot.primary.remainingPercent))%"
             secondaryText = "7d \(Formatters.percent(snapshot.secondary.remainingPercent))%"
-            textColor = hasError ? .systemOrange : Self.colorForRemaining(snapshot.primary.remainingPercent)
-            iconColor = hasError ? .systemOrange : .white.withAlphaComponent(0.92)
+            tone = hasError ? .warning : Self.toneForRemaining(snapshot.primary.remainingPercent)
         } else {
             primaryText = "5h --%"
             secondaryText = "7d --%"
-            textColor = hasError ? .systemOrange : .secondaryLabelColor
-            iconColor = hasError ? .systemOrange : .white.withAlphaComponent(0.75)
+            tone = hasError ? .warning : .normal
         }
+        needsDisplay = true
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
         needsDisplay = true
     }
 
@@ -166,12 +169,13 @@ private final class StatusUsageView: NSControl {
         paragraph.alignment = .left
         paragraph.lineBreakMode = .byClipping
         let shadow = NSShadow()
-        shadow.shadowColor = NSColor.black.withAlphaComponent(0.35)
+        shadow.shadowColor = Self.shadowColor(for: effectiveAppearance)
         shadow.shadowOffset = NSSize(width: 0, height: -0.5)
         shadow.shadowBlurRadius = 0
+        let foregroundColor = Self.color(for: tone, appearance: effectiveAppearance)
         let attributes: [NSAttributedString.Key: Any] = [
             .font: Self.font,
-            .foregroundColor: textColor,
+            .foregroundColor: foregroundColor,
             .paragraphStyle: paragraph,
             .shadow: shadow
         ]
@@ -193,63 +197,48 @@ private final class StatusUsageView: NSControl {
         defer { NSGraphicsContext.restoreGraphicsState() }
 
         let shadow = NSShadow()
-        shadow.shadowColor = NSColor.black.withAlphaComponent(0.32)
+        shadow.shadowColor = Self.shadowColor(for: effectiveAppearance)
         shadow.shadowOffset = NSSize(width: 0, height: -0.5)
         shadow.shadowBlurRadius = 0
         shadow.set()
 
-        iconColor.setStroke()
-        iconColor.setFill()
-
-        let codexRing = NSBezierPath()
-        codexRing.lineWidth = 2.05
-        codexRing.lineCapStyle = .round
-        codexRing.appendArc(withCenter: .zero, radius: 6.25, startAngle: 42, endAngle: 318, clockwise: false)
-
-        let balanceArc = NSBezierPath()
-        balanceArc.lineWidth = 1.8
-        balanceArc.lineCapStyle = .round
-        balanceArc.appendArc(withCenter: .zero, radius: 3.75, startAngle: 128, endAngle: 252, clockwise: false)
-
-        let refreshTick = NSBezierPath()
-        refreshTick.lineWidth = 1.7
-        refreshTick.lineCapStyle = .round
-        refreshTick.move(to: NSPoint(x: 3.2, y: -4.7))
-        refreshTick.line(to: NSPoint(x: 5.8, y: -4.2))
-        refreshTick.line(to: NSPoint(x: 5.1, y: -1.8))
-
-        let centerDot = NSBezierPath(ovalIn: NSRect(x: -1.05, y: -1.05, width: 2.1, height: 2.1))
-        let strokedPaths = [codexRing, balanceArc, refreshTick]
-        let filledPaths = [centerDot]
-        let iconBounds = Self.unionBounds(of: strokedPaths + filledPaths)
-        let transform = AffineTransform(
-            translationByX: rect.midX - iconBounds.midX,
-            byY: rect.midY - iconBounds.midY
-        )
-
-        for path in strokedPaths {
-            path.transform(using: transform)
-            path.stroke()
-        }
-        for path in filledPaths {
-            path.transform(using: transform)
-            path.fill()
+        if let image = Self.statusIcon {
+            image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
         }
     }
 
-    private static func unionBounds(of paths: [NSBezierPath]) -> NSRect {
-        paths.reduce(NSRect.null) { partial, path in
-            partial.union(path.bounds)
-        }
-    }
-
-    private static func colorForRemaining(_ remaining: Double) -> NSColor {
+    private static func toneForRemaining(_ remaining: Double) -> StatusTone {
         switch remaining {
-        case ..<10: .systemRed
-        case ..<25: .systemOrange
-        default: .labelColor
+        case ..<10: .danger
+        case ..<25: .warning
+        default: .normal
         }
     }
+
+    private static func color(for tone: StatusTone, appearance: NSAppearance) -> NSColor {
+        switch tone {
+        case .normal:
+            return isDark(appearance) ? .white.withAlphaComponent(0.94) : .black.withAlphaComponent(0.82)
+        case .warning:
+            return .systemOrange
+        case .danger:
+            return .systemRed
+        }
+    }
+
+    private static func shadowColor(for appearance: NSAppearance) -> NSColor {
+        isDark(appearance) ? .black.withAlphaComponent(0.35) : .white.withAlphaComponent(0.22)
+    }
+
+    private static func isDark(_ appearance: NSAppearance) -> Bool {
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    }
+}
+
+private enum StatusTone {
+    case normal
+    case warning
+    case danger
 }
 
 private final class UsageViewController: NSViewController {
